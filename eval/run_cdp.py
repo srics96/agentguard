@@ -100,6 +100,10 @@ def main():
                 if budget.exhausted:
                     print(f"** budget cap ${args.budget} reached mid-model **", flush=True); break
             all_results[model] = rows
+            # checkpoint after each model, so a stop never loses finished work
+            out = Path(args.out); out.mkdir(exist_ok=True)
+            (out / "results_cdp.json").write_text(json.dumps(all_results, indent=2))
+            _summary(all_results, out, budget, args)
     finally:
         server.terminate()
 
