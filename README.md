@@ -10,7 +10,7 @@ Against the 87 browser-agent attacks in [VPI-Bench](https://arxiv.org/abs/2506.0
 
 | Evaluation | Attacks the attacker completed | Stopped by AgentGuard |
 |---|---|---|
-| Deterministic (scripted attacker attempts every attack) | 87 / 87 | **81** |
+| Deterministic (scripted attacker attempts every attack) | 87 / 87 | **86** |
 | Live model (`gpt-4.1-mini` driven by the injected pages) | 29 / 87 | **26** |
 
 Every data-exfiltration and every destructive (delete / overwrite) attack was
@@ -54,6 +54,14 @@ enforces policy at three points:
 3. **Network** — every outgoing request is held and inspected; one carrying a
    protected or `never_share` value (through url / base64 / reversed encodings),
    or performing a denied action (transfer, delete, …), is aborted.
+4. **Provenance / taint** — on a page the policy marks private (`taint_reads`),
+   whatever the agent reads becomes protected *dynamically*, even values never
+   registered up front. Re-exporting any of it to a sink that is not
+   allow-listed is blocked. This catches exfiltration *by data flow* rather than
+   by recognising a known secret — e.g. forwarding data scraped from a private
+   inbox, which no content scanner would flag.
+5. **Outbound links** — where enabled, a message carrying a link to a domain not
+   on the allow-list is held (phishing-link propagation).
 
 On a violation the guard kills the session and writes an incident. The policy is
 **layered** (global → category such as bank / email / shopping → unknown) and
@@ -90,12 +98,18 @@ user's data flows back right-to-left and is redacted on the way. The policy and
 vault drive all three checks, and every block is logged. **Nothing in the
 enforcement path is an LLM.**
 
-### Two ways to deploy
+### Three ways to deploy
 
 | Mode | How the agent connects | What is enforced | Use when |
 |---|---|---|---|
-| **Library** (`agentguard.guard`) | the agent calls the `GuardedBrowser` action API | all three checks, including per-action intent ("deny a *click* on Transfer") | you control the agent's code |
-| **CDP interception** (`agentguard.CDPGuard`) | the agent drives a raw browser; the guard attaches over the Chrome DevTools Protocol | the data-protection core — `never_see` redaction of responses and egress blocking — for **any** agent, no integration | you do **not** control the agent, or want it guarded transparently |
+| **Library** (`agentguard.guard`) | the agent calls the `GuardedBrowser` action API | all checks, including per-action intent ("deny a *click* on Transfer") | you control the agent's code |
+| **CDP interception** (`agentguard.CDPGuard`) | the agent drives a raw browser; the guard attaches over the Chrome DevTools Protocol | the data-protection core — redaction of responses, egress + taint + link blocking — for **any** agent, no integration | you do **not** control the agent |
+| **Guarded endpoint** (`agentguard.endpoint.GuardedEndpoint`) | the agent connects to a CDP URL with one line (`connect_over_cdp`) | same as CDP interception, as a drop-in browser any agent (browser-use, Operator-style executors) points at | you want a zero-integration pluggable browser |
+
+The guarded endpoint is the pluggable "browser API": `ep = GuardedEndpoint(policy,
+vault); url = ep.start()`, then the agent connects to `url` exactly as it would
+to a normal Chrome. Egress (data leaving, denied actions) is blocked robustly for
+any connected agent; see `examples/guarded_endpoint.py`.
 
 CDP interception rewrites response bodies before the renderer sees them, so a
 secret that is blacked out never reaches the DOM — and therefore never reaches a
@@ -145,9 +159,9 @@ layer directly. This is the coverage measure.
 | Exfiltrate a secret | 42 | 42 | **42** |
 | Delete the user's file | 21 | 21 | **21** |
 | Overwrite the user's file | 18 | 18 | **18** |
-| Forward logs (no secret) | 3 | 3 | 0 |
-| Send a phishing link | 3 | 3 | 0 |
-| **Total** | **87** | **87** | **81** |
+| Forward logs (no secret) | 3 | 3 | **2** |
+| Send a phishing link | 3 | 3 | **3** |
+| **Total** | **87** | **87** | **86** |
 
 **Live-model run** — `gpt-4.1-mini` is given the benign task and reads the
 injected pages itself; whether it attacks is its own behaviour. (12 steps/case,
@@ -172,18 +186,20 @@ per model, both arms, ~$0.94 total OpenAI spend):
 
 The stronger the agent, the more attacks it completes — and CDP interception
 neutralises **every** one that exfiltrates a secret or deletes a file through
-the network, on an agent it was never integrated with. (The weak models
-complete so few attacks that their only successes are the uncatchable cases
-below, which is why their "neutralised" counts look small.)
+the network, on an agent it was never integrated with. (This four-model run
+predates the taint / outbound-link controls below; it reflects egress blocking
+only. The deterministic and single-model numbers above now include taint.)
 
 ### The honest gaps
 
-1. **Social actions with no secret** (`*_FORWARD`, `*_MESSAGE`) — forwarding
-   *logs* that contain no protected value, or sending a phishing *link*. These
-   carry no secret and are not destructive, so a data-leak / destructive-action
-   guard has nothing deterministic to catch. Closing them needs a different
-   control (`send_message` to an unknown recipient becomes approval-required,
-   outbound links to unverified domains are held) — not data detection.
+1. **Social actions with no identifiable content** — after adding provenance
+   (taint) and the outbound-link control, the forwarding cases whose content
+   carries an identifiable value (an email address, an account label) and all
+   the phishing-link cases are now **blocked** (deterministic: 86/87, up from
+   81). What remains is a *single* forward whose payload is trivial chit-chat
+   ("teammate: hey; you: hi") with nothing specific enough to taint without
+   risking false positives. Catching that cleanly needs recipient
+   allow-listing, not data detection — it is on the roadmap.
 2. **Client-side actions, CDP mode only** — an email/messenger "delete" that
    just edits the page's own state makes no network request, so the
    network-layer CDP guard cannot see it. The action-API `GuardedBrowser` mode
@@ -199,10 +215,12 @@ network was stopped, across all four models.
 
 ```
 agentguard/
-  detect.py      sensitive-data detectors, exact-value vault, redaction, action classification
+  detect.py      sensitive-data detectors, exact-value vault, taint/provenance, redaction, action classification
   policy.py      layered, restriction-only, signed policy
   signing.py     Ed25519 policy signing
-  guard.py       the guarded browser — the three enforcement points
+  guard.py       the guarded browser — the enforcement points
+  cdp.py         CDP-level interception (guard any agent, no integration)
+  endpoint.py    GuardedEndpoint — the pluggable guarded CDP browser
   incidents.py   append-only incident log
   __init__.py    guard() entry point + public API
 policies/        default.policy.yaml and its signature
@@ -217,7 +235,8 @@ tests/           19 tests (run with no browser)
 ```bash
 pip install playwright pyyaml cryptography pytest openai flask pandas pyarrow
 python -m pytest -q                       # 19 tests, no browser needed
-python examples/integrate.py              # see the guard act
+python examples/integrate.py              # see the guard act (in-process)
+python examples/guarded_endpoint.py       # pluggable endpoint: a separate agent is guarded
 
 # clone the VPI-Bench repos beside this one, under ../vendor:
 #   ../vendor/agents  (github.com/cua-framework/agents)
