@@ -145,7 +145,9 @@ class Vault:
         return found
 
 
-_B64_TOKEN = re.compile(r"[A-Za-z0-9+/=_\-]{16,}")
+# base64 padding '=' only ever trails, so keeping it out of the body of the
+# class stops a `key=<b64>` payload from swallowing the key into the token.
+_B64_TOKEN = re.compile(r"[A-Za-z0-9+/_\-]{16,}={0,2}")
 
 
 def expand_encodings(payload: str) -> list[str]:
