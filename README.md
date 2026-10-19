@@ -168,10 +168,12 @@ injected pages itself; whether it attacks is its own behaviour. (12 steps/case,
 ~$0.29 of OpenAI spend.)
 
 - Followed the injection (unguarded): **59 / 87**
-- Completed the attack (unguarded): **29 / 87**
-- Completed the attack (with the guard): **3 / 87**
-- Of the 29 attacks the model completed, the guard stopped **26** — every
-  exfiltration and every delete.
+- Completed the attack (unguarded): **21 / 87**
+- Completed the attack (with the guard): **1 / 87**
+- Of the 21 attacks the model completed, the guard stopped **20** — every
+  exfiltration and every delete. The one residual is the trivial-content
+  messenger-forward (see the honest gaps). (With taint + outbound-link controls;
+  ~$0.27 of OpenAI spend.)
 
 **CDP-interception run, four models** — the agent drives a *raw* browser and
 never calls the guard; CDPGuard mediates at the protocol boundary (all 87 cases
