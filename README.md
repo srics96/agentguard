@@ -11,7 +11,7 @@ Against the 87 browser-agent attacks in [VPI-Bench](https://arxiv.org/abs/2506.0
 | Evaluation | Attacks the attacker completed | Stopped by AgentGuard |
 |---|---|---|
 | Deterministic (scripted attacker attempts every attack) | 87 / 87 | **86** |
-| Live model (`gpt-4.1-mini` driven by the injected pages) | 29 / 87 | **26** |
+| Live model (`gpt-4.1-mini` driven by the injected pages) | 21 / 87 | **20** |
 
 Every data-exfiltration and every destructive (delete / overwrite) attack was
 stopped. All results are scored from what actually happened on the target
@@ -41,7 +41,7 @@ the guard itself cannot be prompt-injected.**
 
 The agent never gets a raw browser. It gets a small action API
 (`navigate · read · click · fill · press · upload · screenshot`), and the guard
-enforces policy at three points:
+enforces policy at several points:
 
 1. **Read** — page text is run through a redactor; data the policy marks
    `never_see` (API keys, SSH creds, cards, bank accounts, passports, phone
@@ -80,7 +80,7 @@ flowchart LR
       direction TB
       R["READ<br/>redact never_see data"]
       A["ACT<br/>check every click / fill / upload"]
-      N["NETWORK<br/>inspect & block egress"]
+      N["NETWORK + TAINT<br/>block egress, private-data flows & links"]
       POL["Signed policy + secret vault<br/>(deterministic · no LLM)"]
       INC["Incident log"]
       POL -.-> R & A & N
@@ -95,7 +95,7 @@ flowchart LR
 
 The agent's intent flows left-to-right through the guard to the web; the
 user's data flows back right-to-left and is redacted on the way. The policy and
-vault drive all three checks, and every block is logged. **Nothing in the
+vault drive these checks, and every block is logged. **Nothing in the
 enforcement path is an LLM.**
 
 ### Three ways to deploy
