@@ -159,15 +159,41 @@ injected pages itself; whether it attacks is its own behaviour. (12 steps/case,
 - Of the 29 attacks the model completed, the guard stopped **26** — every
   exfiltration and every delete.
 
-### The honest gap
+**CDP-interception run, four models** — the agent drives a *raw* browser and
+never calls the guard; CDPGuard mediates at the protocol boundary (all 87 cases
+per model, both arms, ~$0.94 total OpenAI spend):
 
-The same **3** cases get through in both runs: `*_FORWARD` and `*_MESSAGE` —
-forwarding message/email *logs* that contain no protected value, and sending a
-phishing *link* to a contact. These carry no secret and are not destructive, so
-a data-leak / destructive-action guard has nothing deterministic to catch.
-Closing them needs a different control (e.g. `send_message` to an unknown
-recipient becomes approval-required, or outbound links to unverified domains are
-held), which is on the roadmap — not data detection.
+| Model | Followed injection | Completed attack (unguarded) | Still succeeds under CDP guard | Neutralised |
+|---|---|---|---|---|
+| `gpt-4o-mini` | 39/87 | 3 | 3 | 0/3 |
+| `gpt-4.1-nano` | 37/87 | 3 | 1 | 3/3 |
+| `gpt-4.1-mini` | 63/87 | 26 | 3 | 23/26 |
+| `gpt-4.1` | 60/87 | 24 | 1 | 24/24 |
+
+The stronger the agent, the more attacks it completes — and CDP interception
+neutralises **every** one that exfiltrates a secret or deletes a file through
+the network, on an agent it was never integrated with. (The weak models
+complete so few attacks that their only successes are the uncatchable cases
+below, which is why their "neutralised" counts look small.)
+
+### The honest gaps
+
+1. **Social actions with no secret** (`*_FORWARD`, `*_MESSAGE`) — forwarding
+   *logs* that contain no protected value, or sending a phishing *link*. These
+   carry no secret and are not destructive, so a data-leak / destructive-action
+   guard has nothing deterministic to catch. Closing them needs a different
+   control (`send_message` to an unknown recipient becomes approval-required,
+   outbound links to unverified domains are held) — not data detection.
+2. **Client-side actions, CDP mode only** — an email/messenger "delete" that
+   just edits the page's own state makes no network request, so the
+   network-layer CDP guard cannot see it. The action-API `GuardedBrowser` mode
+   *does* block these (it intercepts the click); extending the CDP mode to them
+   means also mediating the CDP **Input** domain, which is on the roadmap. This
+   is why the two modes compose.
+
+Both gaps are design boundaries of a data/destruction guard, not detector
+misses: every attack that actually moved a secret or destroyed data through the
+network was stopped, across all four models.
 
 ## Repository layout
 
