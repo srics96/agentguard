@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agentguard"
+version = "0.1.0"
+description = "A deterministic security guard for browser agents: redact secrets, gate actions, block exfiltration — no LLM in the enforcement path."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+dependencies = [
+    "playwright>=1.40",
+    "pyyaml>=6.0",
+    "cryptography>=41",
+]
+
+[project.optional-dependencies]
+# Needed only to run the VPI-Bench evaluation harness, not the guard itself.
+eval = [
+    "openai>=1.0",
+    "flask>=3.0",
+    "pandas>=2.0",
+    "pyarrow>=14",
+]
+dev = ["pytest>=7"]
+
+[tool.setuptools]
+packages = ["agentguard"]

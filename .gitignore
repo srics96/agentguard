@@ -2,3 +2,4 @@ __pycache__/
 *.pyc
 policies/policy_key.pem
 results/
+*.egg-info/

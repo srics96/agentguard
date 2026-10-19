@@ -118,6 +118,36 @@ let it see my balance or move money"* enforceable against an agent you didn't
 write: the balance is redacted out of the page, and any request to a transfer
 endpoint is failed.
 
+## Installation
+
+```bash
+# from a clone of this repo
+pip install -e .                 # core guard (playwright, pyyaml, cryptography)
+python -m playwright install chromium   # if you don't already have a Chromium
+#   (on this cloud image Chromium is preinstalled; the guard auto-detects it)
+
+# optional extras
+pip install -e ".[eval]"         # to run the VPI-Bench evaluation (openai, flask, pandas)
+pip install -e ".[dev]"          # to run the tests (pytest)
+```
+
+One-time policy setup (sign the standing policy so it can't be tampered with):
+
+```bash
+python -c "from agentguard.signing import keygen, sign_file; \
+  keygen('policies/policy_key.pem','policies/policy_key.pub'); \
+  sign_file('policies/default.policy.yaml','policies/policy_key.pem')"
+# keep policy_key.pem private (git-ignored); ship policy_key.pub with the guard
+```
+
+Verify it works:
+
+```bash
+python -m pytest -q                 # 24 tests, no browser needed
+python examples/integrate.py        # watch the guard redact + block in-process
+python examples/guarded_endpoint.py # the pluggable endpoint blocks a separate agent
+```
+
 ## Using it
 
 AgentGuard is a drop-in in front of any Playwright-driven browser agent — wrap
@@ -140,6 +170,37 @@ gb.fill("#msg", agent_value)     # raises GuardViolation + kills the session if 
 Because the agent only ever holds `navigate / read / click / fill / press /
 upload / screenshot`, the enforcement cannot be bypassed from agent code. A
 runnable end-to-end demo is in [`examples/integrate.py`](examples/integrate.py).
+
+## Integrate with an existing agent (one line)
+
+If you don't control the agent's code — or it drives a raw browser over CDP
+(browser-use, OpenClaw, Operator-style executors, Playwright/Puppeteer) — don't
+wrap anything. Start a guarded endpoint and point the agent's browser URL at it:
+
+```python
+from agentguard import Vault
+from agentguard.endpoint import GuardedEndpoint
+from agentguard.policy import Policy
+
+policy = Policy.load("policies/default.policy.yaml", public_key="policies/policy_key.pub")
+ep = GuardedEndpoint(policy, Vault({"api_key": "...", "ssh_pw": "..."}))
+cdp_url = ep.start()          # e.g. http://127.0.0.1:51043
+print("point your agent at:", cdp_url)
+```
+
+Then, on the agent side, change only the browser endpoint — no AgentGuard import:
+
+```python
+# browser-use:                Browser(cdp_url=cdp_url)
+# Playwright:                  playwright.chromium.connect_over_cdp(cdp_url)
+# Puppeteer:                   puppeteer.connect({ browserURL: cdp_url })
+```
+
+Every request the agent makes is now inspected: data leaving to a non-allowed
+sink or a denied action (transfer, delete, …) is blocked, and the incident is
+logged. See [`examples/guarded_endpoint.py`](examples/guarded_endpoint.py) for a
+working run. (Note the endpoint's redaction attach-race caveat under
+[Architecture](#three-ways-to-deploy); egress blocking is robust regardless.)
 
 ## Results in full
 
