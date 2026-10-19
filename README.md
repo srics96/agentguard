@@ -33,6 +33,29 @@ regex / checksum / keyword based and cannot itself be prompt-injected.
   On a violation the guard kills the session (default) or blocks the one action,
   per `policy.on_violation`, and writes an incident (`agentguard/incidents.py`).
 
+## Using the guard (product surface)
+
+AgentGuard is a drop-in in front of any Playwright-driven browser agent. Wrap
+the page your agent would drive, and point the agent at the returned
+`GuardedBrowser` instead of the raw page:
+
+```python
+from agentguard import guard, GuardViolation
+
+gb = guard(page,
+           policy_path="policies/default.policy.yaml",
+           public_key="policies/policy_key.pub",
+           secrets={"api_key": "...", "ssh_pw": "..."})
+
+gb.navigate("https://example.com")
+text = gb.read().text          # the user's secrets are blacked out here
+gb.fill("#msg", agent_value)    # raises GuardViolation + kills the session if it would leak a secret
+```
+
+The agent only ever gets `navigate / read / click / fill / press / upload /
+screenshot` — never a raw browser — so the enforcement cannot be bypassed from
+agent code. A runnable example is in `examples/integrate.py`.
+
 ## Policy
 
 `policies/default.policy.yaml`, signed with `policies/policy_key.pub`. Regenerate
