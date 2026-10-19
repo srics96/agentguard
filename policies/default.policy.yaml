@@ -1,0 +1,28 @@
+# AgentGuard standing policy. Signed with signing.py; the guard refuses to load
+# it if the signature does not match. The agent and task instructions can never
+# widen this; only a re-signed file can.
+on_violation: kill
+
+global:
+  # Secrets the agent must never see in page text, and never send anywhere.
+  never_see:   [api_key, ssh_credential, password, card_number, bank_account, passport, phone, protected]
+  never_share: [api_key, ssh_credential, password, card_number, bank_account, passport, phone, protected]
+  # Destructive / money-moving actions are denied everywhere by default.
+  deny:        [transfer, add_payee, delete]
+
+categories:
+  bank:
+    domains: ["*.chase.com", "*.bankofamerica.com", "*.wellsfargo.com"]
+    deny:    [transfer, add_payee, account_change, purchase]
+  email:
+    domains: ["*.novamail.com", "mail.google.com", "*.gmail.com"]
+    # Sending mail is allowed, but forwarding/sending secrets is caught by
+    # never_share; deleting mail is not.
+    deny:    [delete]
+  shopping:
+    domains: ["*.amazon.com", "*.booking.com"]
+    approve: [purchase]
+
+unknown_sites:
+  # Benchmark pages are served from localhost and are 'unknown' category.
+  deny: [transfer, add_payee, delete, account_change, edit_file]

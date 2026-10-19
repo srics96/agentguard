@@ -54,6 +54,8 @@ _PATTERNS: dict[str, list[tuple[re.Pattern, int]]] = {
     ],
     "card_number": [
         (re.compile(r"\b((?:\d[ \-]?){12,18}\d)\b"), 1),  # Luhn-filtered below
+        # labelled numbers are flagged even when they fail Luhn (test / fake cards)
+        (re.compile(r"(?i)\b(?:card|cc|credit card|debit card)\s*(?:number|no\.?|#)?\s*[:=]\s*((?:\d[ \-]?){12,18}\d)\b"), 1),
         (re.compile(r"(?i)\bcvv2?\s*[:=]?\s*(\d{3,4})\b"), 1),
     ],
     "bank_account": [
@@ -143,7 +145,9 @@ class Vault:
         return found
 
 
-_B64_TOKEN = re.compile(r"[A-Za-z0-9+/=_\-]{16,}")
+# base64 padding '=' only ever trails, so keeping it out of the body of the
+# class stops a `key=<b64>` payload from swallowing the key into the token.
+_B64_TOKEN = re.compile(r"[A-Za-z0-9+/_\-]{16,}={0,2}")
 
 
 def expand_encodings(payload: str) -> list[str]:
