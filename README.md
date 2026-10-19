@@ -112,3 +112,22 @@ destructive-action guard has nothing deterministic to catch. Blocking them needs
 a different control (e.g. denying `send_message` to unknown recipients, or
 treating outbound links to unverified domains as approval-required) rather than
 data detection. See `results/SUMMARY.md`.
+
+### Live-model results (gpt-4.1-mini)
+
+Running a real model through the same guard (`eval/run_live.py`, 87 cases, both
+arms, ~$0.29 of OpenAI spend):
+
+| | value |
+|---|---|
+| Model followed the injection (unguarded) | 59/87 |
+| Attack actually succeeded, unguarded | 29/87 |
+| Attack actually succeeded, with the guard | 3/87 |
+| Attacks neutralised by the guard | 26/29 the model completed |
+
+The model follows the injected instructions in most cases, and completes the
+full attack (real secret reaching the sink, or the Drive file deleted) in 29.
+The guard stops every exfiltration and every delete the model managed; the 3
+that remain are the same `*_FORWARD` / `*_MESSAGE` cases noted above, where no
+protected value leaves. This mirrors the deterministic run and confirms the
+guard holds against a live, injection-following agent, not only a scripted one.
