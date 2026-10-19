@@ -24,7 +24,10 @@ from __future__ import annotations
 
 import base64
 
-from .detect import Vault, classify_request, find_sensitive, redact
+import fnmatch
+
+from .detect import (TaintTracker, Vault, classify_request, find_sensitive,
+                     link_host, links_in, redact)
 from .incidents import Incident, IncidentLog
 from .policy import Policy
 
@@ -36,7 +39,8 @@ class CDPGuard:
     def __init__(self, policy: Policy, vault: Vault, incidents: IncidentLog | None = None):
         self.policy = policy
         self.vault = vault
-        self.incidents = incidents or IncidentLog()
+        self.taint = TaintTracker()
+        self.incidents = incidents if incidents is not None else IncidentLog()
         self._sessions = []
 
     def attach(self, page) -> None:
@@ -95,7 +99,10 @@ class CDPGuard:
         got = sess.send("Fetch.getResponseBody", {"requestId": rid})
         raw = (base64.b64decode(got["body"]).decode("utf-8", "replace")
                if got.get("base64Encoded") else got.get("body", ""))
-        kinds = {k for k in self.policy.rules_for(url).never_see if k != "protected"}
+        rules = self.policy.rules_for(url)
+        if rules.taint_reads:
+            self.taint.observe(raw)
+        kinds = {k for k in rules.never_see if k != "protected"}
         cleaned, hits = redact(raw, kinds, self.vault)
         if hits:
             self.incidents.record(Incident(
@@ -125,4 +132,20 @@ class CDPGuard:
             if hits:
                 return Incident("leak_blocked", f"never_share data {sorted({h.kind for h in hits})}",
                                 url=url, data_kinds=sorted({h.kind for h in hits}), killed=False)
+        dest = link_host(url)
+        tainted = self.taint.leaks_in(haystack)
+        if tainted and not _allowed(dest, rules.allow_sinks):
+            return Incident("leak_blocked", f"private data {sorted(set(tainted))[:3]} to {dest}",
+                            url=url, data_kinds=["tainted"], killed=False)
+        if rules.deny_outbound_links:
+            bad = [h for h in (link_host(u) for u in links_in(body))
+                   if h and not _allowed(h, rules.allow_link_domains)]
+            if bad:
+                return Incident("leak_blocked", f"outbound link to {sorted(set(bad))[:3]}",
+                                url=url, action="send_message", data_kinds=["link"], killed=False)
         return None
+
+
+def _allowed(host: str, patterns: list[str]) -> bool:
+    host = (host or "").lower()
+    return any(fnmatch.fnmatch(host, p.lower()) for p in patterns)

@@ -12,17 +12,31 @@ global:
 
 categories:
   bank:
-    domains: ["*.chase.com", "*.bankofamerica.com", "*.wellsfargo.com"]
-    deny:    [transfer, add_payee, account_change, purchase]
+    # Showcase: "let the agent read balances, never move money, and let nothing
+    # read here leave to anywhere but the bank itself."
+    domains: ["*.chase.com", "*.bankofamerica.com", "*.wellsfargo.com", "*.wealthfront.com"]
+    deny:         [transfer, add_payee, account_change, purchase, edit_file]
+    taint_reads:  true
+    allow_sinks:  ["*.chase.com", "*.bankofamerica.com", "*.wellsfargo.com", "*.wealthfront.com"]
   email:
     domains: ["*.novamail.com", "mail.google.com", "*.gmail.com"]
-    # Sending mail is allowed, but forwarding/sending secrets is caught by
-    # never_share; deleting mail is not.
-    deny:    [delete]
+    # Sending mail is allowed, but forwarding anything read here off-domain is
+    # caught by taint, and phishing links are held.
+    deny:                [delete]
+    taint_reads:         true
+    allow_sinks:         ["mail.google.com", "*.gmail.com", "*.novamail.com"]
+    deny_outbound_links: true
+    allow_link_domains:  ["mail.google.com", "*.gmail.com", "*.novamail.com"]
   shopping:
     domains: ["*.amazon.com", "*.booking.com"]
     approve: [purchase]
 
 unknown_sites:
   # Benchmark pages are served from localhost and are 'unknown' category.
-  deny: [transfer, add_payee, delete, account_change, edit_file]
+  # Strict posture for unknown sites: destructive actions denied, data read
+  # here is tainted and may not leave, and outbound links are held.
+  deny:                [transfer, add_payee, delete, account_change, edit_file]
+  taint_reads:         true
+  allow_sinks:         []
+  deny_outbound_links: true
+  allow_link_domains:  []

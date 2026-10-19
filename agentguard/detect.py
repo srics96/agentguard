@@ -249,3 +249,67 @@ def classify_request(method: str, url: str) -> str | None:
     if method in ("PUT", "PATCH"):
         return "edit_file"
     return None
+
+
+# ----------------------------------------------------- provenance / taint
+
+# A "significant" unit is specific enough that finding it in an outgoing
+# payload is strong evidence the agent is exporting something it read from a
+# private page - as opposed to a common word that would cause false positives.
+_EMAIL = re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}")
+_LONGNUM = re.compile(r"\d{6,}")
+_LONGTOK = re.compile(r"[A-Za-z0-9_\-]{10,}")
+_URL = re.compile(r"https?://[^\s\"'<>)]+")
+
+
+class TaintTracker:
+    """Remembers specific values the agent has read from private sources, so
+    that re-exporting them is caught even when the value is not a pre-known
+    secret (e.g. an address or an account label scraped from the user's inbox).
+
+    This is the dynamic counterpart to the Vault: the Vault holds secrets the
+    user registered up front; the TaintTracker protects whatever the agent
+    actually saw on a page the policy marks private.
+    """
+
+    def __init__(self):
+        self._items: set[str] = set()      # normalised significant units
+        self._raw: dict[str, str] = {}     # normalised -> original (for logs)
+
+    def observe(self, text: str) -> None:
+        for unit in self._significant(text):
+            n = norm(unit)
+            if len(n) >= 6:
+                self._items.add(n)
+                self._raw.setdefault(n, unit)
+
+    def _significant(self, text: str) -> list[str]:
+        out: list[str] = []
+        out += _EMAIL.findall(text)
+        out += _LONGNUM.findall(text)
+        out += _LONGTOK.findall(text)
+        return out
+
+    def leaks_in(self, payload: str) -> list[str]:
+        """Original forms of tainted units present in an outgoing payload,
+        after decoding url/base64/reversed tricks."""
+        if not self._items:
+            return []
+        candidates = [norm(c) for c in expand_encodings(payload)]
+        found = []
+        for n in self._items:
+            if any(n in c or n[::-1] in c for c in candidates):
+                found.append(self._raw.get(n, n))
+        return found
+
+    def __len__(self) -> int:
+        return len(self._items)
+
+
+def links_in(payload: str) -> list[str]:
+    """URLs present in an outgoing payload (for outbound-link policy)."""
+    return _URL.findall(payload)
+
+
+def link_host(url: str) -> str:
+    return (urllib.parse.urlsplit(url).hostname or "").lower()

@@ -31,18 +31,31 @@ class Rules:
     never_see: set[str] = field(default_factory=set)
     never_share: set[str] = field(default_factory=set)
     deny_pages: list[str] = field(default_factory=list)
+    # provenance / taint: treat data read here as private, and the only sinks
+    # that private/tainted data may be sent to.
+    taint_reads: bool = False
+    allow_sinks: list[str] = field(default_factory=list)
+    # outbound-link control: hold messages carrying links to domains not listed.
+    deny_outbound_links: bool = False
+    allow_link_domains: list[str] = field(default_factory=list)
 
     def merged(self, other: "Rules") -> "Rules":
         # Merging only ever *adds* restrictions.
         return Rules(self.deny | other.deny, self.approve | other.approve,
                      self.never_see | other.never_see, self.never_share | other.never_share,
-                     self.deny_pages + other.deny_pages)
+                     self.deny_pages + other.deny_pages,
+                     self.taint_reads or other.taint_reads,
+                     self.allow_sinks + other.allow_sinks,
+                     self.deny_outbound_links or other.deny_outbound_links,
+                     self.allow_link_domains + other.allow_link_domains)
 
 
 def _rules(d: dict | None, where: str) -> Rules:
     d = d or {}
     r = Rules(set(d.get("deny", [])), set(d.get("approve", [])), set(d.get("never_see", [])),
-              set(d.get("never_share", [])), list(d.get("deny_pages", [])))
+              set(d.get("never_share", [])), list(d.get("deny_pages", [])),
+              bool(d.get("taint_reads", False)), list(d.get("allow_sinks", [])),
+              bool(d.get("deny_outbound_links", False)), list(d.get("allow_link_domains", [])))
     bad = (r.deny | r.approve) - ACTION_TYPES
     if bad:
         raise PolicyError(f"{where}: unknown action types {sorted(bad)}")

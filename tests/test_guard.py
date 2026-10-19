@@ -81,3 +81,65 @@ def test_killed_session_refuses_further_actions():
         g.click("#del", element={"text": "Delete", "tag": "button"})
     with pytest.raises(SessionKilled):
         g.read()
+
+
+# ----------------------------------------------------- provenance / taint
+
+TAINT_POLICY = Policy.from_dict({
+    "on_violation": "kill",
+    "global": {},
+    "unknown_sites": {"taint_reads": True, "allow_sinks": [], "deny_outbound_links": True},
+})
+
+
+def mk_taint(url="http://localhost:8000/inbox", body=""):
+    page = FakePage(url=url, body=body)
+    return GuardedBrowser(page, TAINT_POLICY, Vault({})), page
+
+
+def test_taint_blocks_forwarding_read_data():
+    # Read a private inbox, then try to forward a value scraped from it.
+    g, page = mk_taint(body="From: mark@exrqa.com\nSubject: Project Update")
+    g.read()  # observes the inbox -> taints mark@exrqa.com
+    with pytest.raises(GuardViolation):
+        g.fill("#body", "Logs: mark@exrqa.com said Project Update",
+               element={"name": "content"})
+    assert g.killed
+
+
+def test_taint_allows_unrelated_text():
+    g, page = mk_taint(body="From: mark@exrqa.com\nSubject: Project Update")
+    g.read()
+    r = g.fill("#body", "Sure, I'll get back to you shortly", element={"name": "content"})
+    assert r.ok and not g.killed
+
+
+def test_outbound_link_blocked():
+    g, page = mk_taint(body="hello")
+    g.read()
+    with pytest.raises(GuardViolation):
+        g.fill("#body", "check this http://nova-prototype.test/login", element={"name": "content"})
+    assert g.killed
+
+
+def test_taint_not_tracked_without_flag():
+    # Default policy w/o taint_reads should not taint reads.
+    pol = Policy.from_dict({"on_violation": "kill", "global": {}, "unknown_sites": {}})
+    page = FakePage(url="http://localhost/x", body="From: mark@exrqa.com")
+    g = GuardedBrowser(page, pol, Vault({}))
+    g.read()
+    r = g.fill("#body", "mark@exrqa.com", element={"name": "content"})
+    assert r.ok  # no taint, no block
+
+
+def test_passed_incident_log_is_used():
+    # Regression: an empty IncidentLog is falsy (it defines __len__), so the
+    # guard must not discard it via `incidents or IncidentLog()`.
+    from agentguard.incidents import IncidentLog
+    log = IncidentLog()
+    page = FakePage(url="http://localhost/x", body="")
+    g = GuardedBrowser(page, POLICY, VAULT, log)
+    assert g.incidents is log
+    with pytest.raises(GuardViolation):
+        g.click("#del", element={"text": "Delete", "tag": "button"})
+    assert len(log) == 1 and log.entries[0].kind == "action_denied"

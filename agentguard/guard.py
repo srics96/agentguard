@@ -22,7 +22,8 @@ from __future__ import annotations
 import urllib.parse
 from dataclasses import dataclass
 
-from .detect import Vault, classify_element, classify_request, find_sensitive, redact
+from .detect import (TaintTracker, Vault, classify_element, classify_request,
+                     find_sensitive, link_host, links_in, redact)
 from .incidents import Incident, IncidentLog
 from .policy import Policy
 
@@ -61,7 +62,8 @@ class GuardedBrowser:
         self.page = page
         self.policy = policy
         self.vault = vault
-        self.incidents = incidents or IncidentLog()
+        self.taint = TaintTracker()
+        self.incidents = incidents if incidents is not None else IncidentLog()
         self.killed = False
         self._install_network_guard()
 
@@ -73,8 +75,13 @@ class GuardedBrowser:
             return
 
         def handler(route_obj, request):
-            verdict = self._inspect_request(request.method, request.url,
-                                            _request_body(request))
+            try:
+                verdict = self._inspect_request(request.method, request.url,
+                                                _request_body(request))
+            except Exception:
+                # A bug in inspection must not brick the page; let it through.
+                route_obj.continue_()
+                return
             if verdict is None:
                 route_obj.continue_()
             else:
@@ -111,6 +118,26 @@ class GuardedBrowser:
                 return Incident("leak_blocked",
                                 f"never_share data {kinds} to {_host(url)}",
                                 url=url, data_kinds=kinds)
+        # Taint is checked against url+body (a secret can hide in either); the
+        # outbound-link rule is checked against the body only, never the URL
+        # being fetched - navigating to a page is not "sending a link".
+        return self._taint_link_incident(f"{url}\n{body}", body, _host(url), rules, url, "")
+
+    def _taint_link_incident(self, taint_text: str, link_text: str, dest_host: str,
+                             rules, url: str, action: str) -> Incident | None:
+        """Shared egress check: tainted (private-origin) data leaving to a sink
+        that is not allow-listed, or an outbound link to an unlisted domain."""
+        tainted = self.taint.leaks_in(taint_text)
+        if tainted and not _host_allowed(dest_host, rules.allow_sinks):
+            return Incident("leak_blocked",
+                            f"private data {sorted(set(tainted))[:3]} to {dest_host or 'sink'}",
+                            url=url, action=action, data_kinds=["tainted"])
+        if rules.deny_outbound_links:
+            bad = [h for h in (link_host(u) for u in links_in(link_text))
+                   if h and not _host_allowed(h, rules.allow_link_domains)]
+            if bad:
+                return Incident("leak_blocked", f"outbound link to {sorted(set(bad))[:3]}",
+                                url=url, action=action or "send_message", data_kinds=["link"])
         return None
 
     # ---------------------------------------------------------- agent API
@@ -134,6 +161,10 @@ class GuardedBrowser:
         self._check_alive()
         raw = self.page.inner_text(selector) if selector else self.page.inner_text("body")
         rules = self.policy.rules_for(self._url())
+        if rules.taint_reads:
+            # Everything read from a private page becomes protected from here on,
+            # even values we never registered up front.
+            self.taint.observe(raw)
         kinds = _see_kinds(rules.never_see)
         cleaned, hits = redact(raw, kinds, self.vault)
         if hits:
@@ -174,6 +205,10 @@ class GuardedBrowser:
                                          f"fill with never_share data {kinds}",
                                          url=self._url(), action=action, data_kinds=kinds))
                 return ActionResult(False, "fill carries never_share data")
+        inc = self._taint_link_incident(value, value, _host(self._url()), rules, self._url(), action)
+        if inc:
+            self._violation(inc)
+            return ActionResult(False, inc.detail)
         self.page.fill(selector, value)
         return ActionResult(True, action)
 
@@ -247,6 +282,12 @@ def _see_kinds(names: set[str]) -> set[str]:
 
 def _host(url: str) -> str:
     return (urllib.parse.urlsplit(url).hostname or url).lower()
+
+
+def _host_allowed(host: str, patterns: list[str]) -> bool:
+    import fnmatch
+    host = (host or "").lower()
+    return any(fnmatch.fnmatch(host, p.lower()) for p in patterns)
 
 
 def _request_body(request) -> str:
