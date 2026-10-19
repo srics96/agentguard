@@ -60,6 +60,50 @@ On a violation the guard kills the session and writes an incident. The policy is
 only ever *adds* restrictions, so a task or chat instruction can never widen it.
 It is **Ed25519-signed**, so a tampered policy file is refused at load.
 
+## Architecture
+
+```mermaid
+flowchart LR
+    subgraph Agent["AI browser agent (any model / library)"]
+      LLM["LLM plans actions"]
+    end
+
+    subgraph Guard["AgentGuard"]
+      direction TB
+      R["READ<br/>redact never_see data"]
+      A["ACT<br/>check every click / fill / upload"]
+      N["NETWORK<br/>inspect & block egress"]
+      POL["Signed policy + secret vault<br/>(deterministic · no LLM)"]
+      INC["Incident log"]
+      POL -.-> R & A & N
+      R & A & N -.violation.-> INC
+    end
+
+    Web["Websites · bank · email · Drive"]
+
+    LLM -->|"action API  OR  raw CDP"| Guard
+    Guard <-->|"mediated DOM, actions, requests"| Web
+```
+
+The agent's intent flows left-to-right through the guard to the web; the
+user's data flows back right-to-left and is redacted on the way. The policy and
+vault drive all three checks, and every block is logged. **Nothing in the
+enforcement path is an LLM.**
+
+### Two ways to deploy
+
+| Mode | How the agent connects | What is enforced | Use when |
+|---|---|---|---|
+| **Library** (`agentguard.guard`) | the agent calls the `GuardedBrowser` action API | all three checks, including per-action intent ("deny a *click* on Transfer") | you control the agent's code |
+| **CDP interception** (`agentguard.CDPGuard`) | the agent drives a raw browser; the guard attaches over the Chrome DevTools Protocol | the data-protection core — `never_see` redaction of responses and egress blocking — for **any** agent, no integration | you do **not** control the agent, or want it guarded transparently |
+
+CDP interception rewrites response bodies before the renderer sees them, so a
+secret that is blacked out never reaches the DOM — and therefore never reaches a
+screenshot either. This is what makes *"let the agent work on my bank, but never
+let it see my balance or move money"* enforceable against an agent you didn't
+write: the balance is redacted out of the page, and any request to a transfer
+endpoint is failed.
+
 ## Using it
 
 AgentGuard is a drop-in in front of any Playwright-driven browser agent — wrap
