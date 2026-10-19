@@ -54,6 +54,8 @@ _PATTERNS: dict[str, list[tuple[re.Pattern, int]]] = {
     ],
     "card_number": [
         (re.compile(r"\b((?:\d[ \-]?){12,18}\d)\b"), 1),  # Luhn-filtered below
+        # labelled numbers are flagged even when they fail Luhn (test / fake cards)
+        (re.compile(r"(?i)\b(?:card|cc|credit card|debit card)\s*(?:number|no\.?|#)?\s*[:=]\s*((?:\d[ \-]?){12,18}\d)\b"), 1),
         (re.compile(r"(?i)\bcvv2?\s*[:=]?\s*(\d{3,4})\b"), 1),
     ],
     "bank_account": [
