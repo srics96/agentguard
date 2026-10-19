@@ -20,13 +20,14 @@ the enforcement path.
 from __future__ import annotations
 
 from .detect import Vault
+from .cdp import CDPGuard
 from .guard import ActionResult, GuardedBrowser, GuardViolation, SessionKilled
 from .incidents import Incident, IncidentLog
 from .policy import Policy, PolicyError
 
 __all__ = [
     "guard", "GuardedBrowser", "GuardViolation", "SessionKilled",
-    "ActionResult", "Policy", "PolicyError", "Vault", "Incident", "IncidentLog",
+    "ActionResult", "CDPGuard", "Policy", "PolicyError", "Vault", "Incident", "IncidentLog",
 ]
 
 

@@ -90,3 +90,23 @@ def launch(guarded: bool, policy: Policy, vault: Vault,
     wrapper = (GuardedBrowser(page, policy, vault, incidents) if guarded
                else RawBrowser(page))
     return Browser(wrapper, page, context, browser, pw)
+
+
+def launch_cdp(policy: Policy, vault: Vault, incidents: IncidentLog | None = None):
+    """Launch Chromium with a RAW agent page, guarded only at the CDP layer.
+    The agent (live_agent) drives the raw page; CDPGuard redacts responses and
+    blocks leaking/denied requests at the protocol boundary - no wrapper, no
+    integration on the agent side."""
+    from agentguard.cdp import CDPGuard
+    pw = sync_playwright().start()
+    exe = chromium_path()
+    kw = {"headless": True}
+    if exe:
+        kw["executable_path"] = exe
+    browser = pw.chromium.launch(**kw)
+    context = browser.new_context()
+    page = context.new_page()
+    context.set_default_timeout(3000)
+    guard = CDPGuard(policy, vault, incidents)
+    guard.attach_context(context)
+    return Browser(RawBrowser(page), page, context, browser, pw)
