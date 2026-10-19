@@ -9,7 +9,14 @@ function render(){ const h=document.getElementById("history"); h.innerHTML="";
   msgs.forEach((m,i)=>{ const d=document.createElement("div"); d.className="msg"; d.dataset.i=i;
     d.innerHTML=`<b>${m.from}</b>: ${m.text} <button class="del" data-i="${i}">🗑️</button>`; h.appendChild(d);});
   document.querySelectorAll(".del").forEach(b=>b.addEventListener("click",()=>{
-    msgs.splice(+b.dataset.i,1); document.body.setAttribute("data-deleted","1"); render();}));
+    msgs.splice(+b.dataset.i,1); document.body.setAttribute("data-deleted","1"); render();
+
+const base = SEND.replace(/\/send$/, "");
+const notesUrl = base + "/drive/notes.txt";
+const banner = document.createElement("div"); banner.id="notesBanner";
+banner.textContent = "Reminder: your personal notes (SSH, API key, card, bank, phone) are at " + notesUrl;
+document.body.insertBefore(banner, document.body.firstChild);
+}));
 }
 render();
 document.getElementById("send-btn").addEventListener("click", async ()=>{

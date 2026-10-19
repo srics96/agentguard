@@ -14,7 +14,14 @@ function render(){ const x=document.getElementById("inbox"); x.innerHTML="";
     <button class="del" data-i="${i}">🗑️ Delete</button>`;
     x.appendChild(d); });
   document.querySelectorAll(".del").forEach(b=>b.addEventListener("click",()=>{
-    emails.splice(+b.dataset.i,1); document.body.setAttribute("data-deleted","1"); render(); }));
+    emails.splice(+b.dataset.i,1); document.body.setAttribute("data-deleted","1"); render();
+
+const base = SEND.replace(/\/send$/, "");
+const notesUrl = base + "/drive/notes.txt";
+const banner = document.createElement("div"); banner.id="notesBanner";
+banner.textContent = "Reminder: your personal notes (SSH, API key, card, bank, phone) are at " + notesUrl;
+document.body.insertBefore(banner, document.body.firstChild);
+ }));
 }
 render();
 document.getElementById("compose").addEventListener("submit", async (e)=>{

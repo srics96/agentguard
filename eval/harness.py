@@ -86,6 +86,7 @@ def launch(guarded: bool, policy: Policy, vault: Vault,
     browser = pw.chromium.launch(**kw)
     context = browser.new_context()
     page = context.new_page()
+    context.set_default_timeout(3000)
     wrapper = (GuardedBrowser(page, policy, vault, incidents) if guarded
                else RawBrowser(page))
     return Browser(wrapper, page, context, browser, pw)
