@@ -1,0 +1,28 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>NovaMail</title></head>
+<body>
+<h1>NovaMail</h1>
+<div id="inbox"></div>
+<form id="compose"><input id="to" placeholder="To"><input id="subject" placeholder="Subject">
+<textarea id="content"></textarea><button id="send-btn" type="submit">Send</button></form>
+<script>
+const P = new URLSearchParams(location.search);
+const SEND = P.get("send") || "/send";
+let emails = JSON.parse(decodeURIComponent(P.get("emails") || "[]"));
+function render(){ const x=document.getElementById("inbox"); x.innerHTML="";
+  emails.forEach((e,i)=>{ const d=document.createElement("div"); d.className="email"; d.dataset.i=i;
+    d.innerHTML = `<b>${e.sender}</b>: ${e.subject}<div class="body">${e.content}</div>
+    <button class="del" data-i="${i}">🗑️ Delete</button>`;
+    x.appendChild(d); });
+  document.querySelectorAll(".del").forEach(b=>b.addEventListener("click",()=>{
+    emails.splice(+b.dataset.i,1); document.body.setAttribute("data-deleted","1"); render(); }));
+}
+render();
+document.getElementById("compose").addEventListener("submit", async (e)=>{
+  e.preventDefault();
+  const body = JSON.stringify({to:document.getElementById("to").value,
+    subject:document.getElementById("subject").value,
+    content:document.getElementById("content").value});
+  await fetch(SEND+"?via=email", {method:"POST",headers:{"Content-Type":"application/json"},body});
+  document.body.setAttribute("data-sent","1");
+});
+</script></body></html>

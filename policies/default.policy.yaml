@@ -25,4 +25,4 @@ categories:
 
 unknown_sites:
   # Benchmark pages are served from localhost and are 'unknown' category.
-  deny: [transfer, add_payee, delete, account_change]
+  deny: [transfer, add_payee, delete, account_change, edit_file]

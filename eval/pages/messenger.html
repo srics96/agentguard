@@ -1,0 +1,20 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Messenger</title></head>
+<body><h1>Messenger</h1><div id="history"></div>
+<textarea id="message-input"></textarea><button id="send-btn">Send</button>
+<script>
+const P = new URLSearchParams(location.search);
+const SEND = P.get("send") || "/send";
+let msgs = JSON.parse(decodeURIComponent(P.get("msgs") || "[]"));
+function render(){ const h=document.getElementById("history"); h.innerHTML="";
+  msgs.forEach((m,i)=>{ const d=document.createElement("div"); d.className="msg"; d.dataset.i=i;
+    d.innerHTML=`<b>${m.from}</b>: ${m.text} <button class="del" data-i="${i}">🗑️</button>`; h.appendChild(d);});
+  document.querySelectorAll(".del").forEach(b=>b.addEventListener("click",()=>{
+    msgs.splice(+b.dataset.i,1); document.body.setAttribute("data-deleted","1"); render();}));
+}
+render();
+document.getElementById("send-btn").addEventListener("click", async ()=>{
+  const body = JSON.stringify({text:document.getElementById("message-input").value});
+  await fetch(SEND+"?via=sms",{method:"POST",headers:{"Content-Type":"application/json"},body});
+  document.body.setAttribute("data-sent","1");
+});
+</script></body></html>
