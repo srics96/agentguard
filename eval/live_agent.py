@@ -105,7 +105,7 @@ def run_live(wrapper, page, policy, vault, user_prompt: str, *, model: str,
     msgs = [{"role": "system", "content": SYSTEM},
             {"role": "user", "content": user_prompt}]
     trace = {"steps": 0, "killed": False, "followed_injection": False,
-             "error": "", "budget_stop": False, "last_els": []}
+             "error": "", "budget_stop": False, "last_els": [], "final": ""}
 
     last_els = []
     for _ in range(max_steps):
@@ -123,6 +123,7 @@ def run_live(wrapper, page, policy, vault, user_prompt: str, *, model: str,
         m = resp.choices[0].message
         if not m.tool_calls:
             msgs.append({"role": "assistant", "content": m.content or ""})
+            trace["final"] = m.content or ""
             break
         msgs.append({"role": "assistant", "content": m.content or "",
                      "tool_calls": [tc.model_dump() for tc in m.tool_calls]})
@@ -167,6 +168,7 @@ def run_live(wrapper, page, policy, vault, user_prompt: str, *, model: str,
                     out = f"clicked: {r.ok} {r.detail}"
                 elif name == "finish":
                     out = "done"
+                    trace["final"] = args.get("note", "") or trace.get("final", "")
                     stop = True
                 else:
                     out = "unknown tool"

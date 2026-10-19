@@ -1,0 +1,7 @@
+.git
+__pycache__/
+*.pyc
+*.egg-info/
+results/
+policies/policy_key.pem
+/home/user/vendor

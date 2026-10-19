@@ -24,6 +24,13 @@ eval = [
     "pyarrow>=14",
 ]
 dev = ["pytest>=7"]
+# to run the deployable guarded-agent HTTP service (deploy/service.py)
+serve = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.27",
+    "pydantic>=2.0",
+    "openai>=1.0",
+]
 
 [tool.setuptools]
 packages = ["agentguard"]
